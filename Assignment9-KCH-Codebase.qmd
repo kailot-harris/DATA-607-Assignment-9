@@ -1,0 +1,168 @@
+---
+title: "DATA 607 - Assignment 9 - Codebase"
+author: "Kailot C. Harris"
+date: "2026/10/26"
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-overflow: wrap
+editor: visual
+theme:
+  dark: darkly
+  light: flatly
+---
+
+# Introduction and Overview
+
+In this assignment, the New York Times (NYT) Application Programming Interface (API) will be accessed. Data from at least two endpoints will be collected in R. The JSON responses will be parsed into data frames, which will then be tidied and analyzed. One potential avenue of investigation is quantifying the prevalence of "AI", "LLM", and other keywords in the NYT historical records. To accomplish this, the following endpoints will be accessed:
+
+1.  Books API
+
+    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence of AI-focused books in the NYT lists.
+
+2.  Archive API
+
+    - This API provides data about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
+
+Anticipated challenges include safe secret storage, scoping the data pulls to limit file size, and comparing data from books to articles.
+
+# Approach
+
+1.  Sign up for NYT API credentials
+
+    1.  <https://developer.nytimes.com/>
+
+2.  Save access keys and secrets to local `.Renviron` file.
+
+    1.  This avoids leaking secrets and keeps them local
+
+3.  Probe the API endpoints with test scripts
+
+    1.  Confirm connection is successful and shape of queried data matches expectations
+
+4.  Ingest API data and parse into data frames.
+
+    1.  Optional challenge: store data in parquet files (arrow package)
+
+5.  Tidy data frames and prepare for downstream analysis
+
+# Codebase
+
+## API Access Testing
+
+```{r load-packages}
+#|echo: FALSE
+#|warning: FALSE
+#|message: FALSE
+
+library(tidyverse)
+library(httr2)
+library(jsonlite)
+library(arrow)
+
+```
+
+```{r test-books}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+if (Sys.getenv("NYT_API_KEY") == "") {
+  stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
+}
+
+if (Sys.getenv("NYT_API_SECRET") == "") {
+  stop("NYT_SECRET_KEY not found in environment. Please set in .Renviron file.")
+}
+
+books_url <- "https://api.nytimes.com/svc/books/v3/lists/full-overview.json"
+
+req <- request(books_url) |>        # Structures request object with credentials
+  req_url_query(`api-key` = Sys.getenv("NYT_API_KEY"),
+                `secret-key` = Sys.getenv("NYT_API_SECRET"))
+
+resp <- req_perform(req)            # Loads response from request
+
+stopifnot(resp_status(resp) == 200) # Stops if HTTP status is not 200 OK
+
+raw_json <- resp |>                 # Parse JSON data into raw frame
+  resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+names(raw_json)
+# Print status code
+raw_json$status 
+
+# Print number of results in JSON object
+raw_json$num_results
+
+books_df <- as_tibble(raw_json$results$lists) |>
+  unnest(books)
+
+knitr::kable(head(books_df[,12:13]))
+
+
+```
+
+```{r test-archive}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+if (Sys.getenv("NYT_API_KEY") == "") {
+  stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
+}
+
+if (Sys.getenv("NYT_API_SECRET") == "") {
+  stop("NYT_SECRET_KEY not found in environment. Please set in .Renviron file.")
+}
+
+archive_url <- "https://api.nytimes.com/svc/archive/v1/2026/1.json"
+
+req2 <- request(archive_url) |>        # Structures request object with credentials
+  req_url_query(`api-key` = Sys.getenv("NYT_API_KEY"),
+                `secret-key` = Sys.getenv("NYT_API_SECRET"))
+
+resp2 <- req_perform(req2)            # Loads response from request
+
+stopifnot(resp_status(resp2) == 200) # Stops if HTTP status is not 200 OK
+
+raw_json2 <- resp2 |>                 # Parse JSON data into raw frame
+  resp_body_string() |> 
+  fromJSON(flatten = TRUE)
+
+# check structure of raw json
+names(raw_json2)
+names(raw_json2$response)
+names(raw_json2$response$meta)
+
+# Print number of results in JSON object
+raw_json2$response$meta$hits
+
+archive_df <- as_tibble(raw_json2$response$docs)
+  
+knitr::kable(head(archive_df[,1:3],3))
+
+```
+
+Both tests passed (`status = 200` and real data in glimpses), so now data can be ingested and tidied to prepare for analysis.
+
+## Ingesting API data
+
+### Saving archive data into parquet files
+
+```{r}
+
+parquet_path <- "nyt_archive_2026_01.parquet"
+
+if(!file.exists(parquet_path)){
+  resp2 <- request(archive_url) |>
+    req_url_query(`api-key` = Sys.getenv("NYT_API_KEY"),
+                  `secret-key` = Sys.getenv("NYT_API_SECRET")) |> 
+    req_perform()
+  
+  stopifnot(resp_status(resp2) == 200)
+  
+}
+```
