@@ -1,0 +1,44 @@
+---
+title: "DATA 607 - Assignment 9 - Approach"
+author: "Kailot C. Harris"
+date: "2026/10/26"
+format:
+  html:
+    toc: true
+    code-fold: true
+    code-overflow: wrap
+editor: visual
+theme:
+  dark: darkly
+  light: flatly
+---
+
+# Introduction and Overview
+
+In this assignment, the New York Times (NYT) Application Programming Interface (API) will be accessed. Data from at least two endpoints will be collected in R. The JSON responses will be parsed into data frames, which will then be tidied and analyzed. One potential avenue of investigation is quantifying the prevalence of "AI", "LLM", and other keywords in the NYT historical records. To accomplish this, the following endpoints will be accessed:
+
+1.  Books API
+
+    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence of AI-focused books in the NYT lists.
+
+2.  Archive API
+
+    - This API provides data about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
+
+# Approach
+
+1.  Sign up for NYT API credentials
+
+    1.   <https://developer.nytimes.com/>
+
+2.  Save access keys and secrets to local `.Renviron` file.
+
+    1.  This avoids leaking secrets and keeps them local
+
+3.  Probe the API endpoints with test scripts
+
+    1.  Confirm connection is successful and shape of queried data matches expectations
+
+4.  Ingest API data and parse into data frames.
+
+5.  Tidy data frames and prepare for downstream analysis
