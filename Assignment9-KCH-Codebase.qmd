@@ -100,6 +100,8 @@ raw_json$num_results
 books_df <- as_tibble(raw_json$results$lists) |>
   unnest(books)
 
+names(books_df)
+
 knitr::kable(head(books_df[,12:13]))
 
 
@@ -150,13 +152,58 @@ Both tests passed (`status = 200` and real data in glimpses), so now data can be
 
 ## Ingesting API data
 
-### Saving archive data into parquet files
+### Saving data into parquet files
 
-```{r}
+```{r parquet-books}
+
+parquet_path <- "nyt_books.parquet"
+
+if(!file.exists(parquet_path)){
+  books_url <- "https://api.nytimes.com/svc/books/v3/lists/full-overview.json"
+  
+  resp <- request(books_url) |>
+    req_url_query(`api-key` = Sys.getenv("NYT_API_KEY"),
+                  `secret-key` = Sys.getenv("NYT_API_SECRET")) |> 
+    req_perform()
+  
+  stopifnot(resp_status(resp) == 200)
+  
+  raw_json <- resp |>
+    resp_body_string() |>
+    fromJSON(flatten = TRUE)
+  
+  books_df <- as_tibble(raw_json$results$lists) |>
+    unnest(books) |> 
+    select(
+      list_name = display_name,
+      updated, 
+      rank, 
+      rank_last_week,
+      weeks_on_list, 
+      title, 
+      author, 
+      description, 
+      publisher,
+      primary_isbn13,
+      created_date
+    ) |>
+    mutate(created_date = as.Date(created_date),
+           description = na_if(description, "")
+           )
+  
+  write_parquet(books_df, parquet_path)
+} else {
+  books_df <-read_parquet(parquet_path)
+}
+```
+
+```{r parquet-archive-jan-26}
 
 parquet_path <- "nyt_archive_2026_01.parquet"
 
 if(!file.exists(parquet_path)){
+  archive_url <- "https://api.nytimes.com/svc/archive/v1/2026/1.json"
+  
   resp2 <- request(archive_url) |>
     req_url_query(`api-key` = Sys.getenv("NYT_API_KEY"),
                   `secret-key` = Sys.getenv("NYT_API_SECRET")) |> 
@@ -164,5 +211,47 @@ if(!file.exists(parquet_path)){
   
   stopifnot(resp_status(resp2) == 200)
   
+  raw_json2 <- resp2 |>
+    resp_body_string() |>
+    fromJSON(flatten = TRUE)
+  
+  archive_df <- as_tibble(raw_json2$response$docs) |>
+    select(
+      article_id = `_id`,
+      pub_date, 
+      section_name,
+      subsection_name,
+      news_desk,
+      document_type, 
+      type_of_material,
+      headline = headline.main,
+      kicker = headline.kicker,
+      abstract, 
+      word_count, 
+      print_section,
+      print_page,
+      web_url, 
+      keywords
+    ) |>
+    mutate(pub_date = as.Date(pub_date),
+           across(where(is.character), ~ na_if(.x, ""))
+          )
+  write_parquet(archive_df, parquet_path)
+} else {
+  archive_df <-read_parquet(parquet_path)
 }
 ```
+
+## Data Analysis
+
+Although this assignment does not call for analysis and findings, these two API endpoints can be used to answer a specific research question:
+
+*How does the surge in daily/monthly AI news coverage in the NYT Archive compare to the appearance and longevity (`weeks_on_list`) of AI/tech books on the NYT Best Sellers lists?*
+
+```{r}
+
+```
+
+# Conclusions and Recommendations
+
+An extension of this work could include building a deeper data set via a functional pipeline approach. Automating the data fetching process from the API would allow for analyzing trends from a longer historical timeframe. A 5-year archive (2021-10-01 through 2026-10-01) could be assembled by applying the function to a series of month-year combinations.
