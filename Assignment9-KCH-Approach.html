@@ -257,35 +257,38 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="introduction-and-overview" class="level1">
 <h1>Introduction and Overview</h1>
-<p>In this assignment, the New York Times (NYT) Application Programming Interface (API) will be accessed. Data from at least two endpoints will be collected in R. The JSON responses will be parsed into data frames, which will then be tidied and analyzed. One potential avenue of investigation is quantifying the prevalence of “AI”, “LLM”, and other keywords in the NYT historical records. To accomplish this, the following endpoints will be accessed:</p>
+<p>In this assignment, the New York Times (NYT) Application Programming Interface (API) is accessed in R to collect, tidy, and analyze data from two distinct endpoints. The primary objective of this codebase is to quantify and compare the prevalence of Artificial Intelligence (“AI”), Large Language Models (“LLMs”), and related concepts across NYT news coverage and best-selling books. To accomplish this, while managing payload sizes, the following endpoints and scopes are used:</p>
 <ol type="1">
 <li><p>Books API</p>
 <ul>
-<li>This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence of AI-focused books in the NYT lists.</li>
+<li>This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence and longevity of AI-focused books in the NYT lists.</li>
 </ul></li>
 <li><p>Archive API</p>
 <ul>
-<li>This API provides data about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.</li>
+<li>This API provides metadata about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.</li>
 </ul></li>
 </ol>
+<p>Key engineering challenges addressed in this workflow include secure credential storage, local caching to minimize redundant API requests, unnesting complex JSON structures, and reconciling text searches across article metadata and book descriptions.</p>
 </section>
 <section id="approach" class="level1">
 <h1>Approach</h1>
 <ol type="1">
-<li><p>Sign up for NYT API credentials</p>
+<li><p>Credential management:</p>
 <ol type="1">
-<li><a href="https://developer.nytimes.com/" class="uri">https://developer.nytimes.com/</a></li>
+<li>Register for NYT Developer API credentials at https://developer.nytimes.com/ and store the API key and secret locally in an .Renviron file to prevent exposing secrets in the codebase.</li>
 </ol></li>
-<li><p>Save access keys and secrets to local <code>.Renviron</code> file.</p>
+<li><p>Endpoint probing</p>
 <ol type="1">
-<li>This avoids leaking secrets and keeps them local</li>
+<li>Query the Books and Archive APIs using <code>httr2</code> test scripts to verify <code>200 OK</code> HTTP statuses and inspect the nested structure of the raw JSON payloads.</li>
 </ol></li>
-<li><p>Probe the API endpoints with test scripts</p>
+<li><p>Data ingestion</p>
 <ol type="1">
-<li>Confirm connection is successful and shape of queried data matches expectations</li>
+<li>Parse the JSON payloads into flat tibbles using <code>jsonlite</code> and <code>tidyr::unnest()</code>, select relevant columns, standardize dates and missing values, and cache the resulting data frames locally as .parquet files using the <code>arrow</code> package.</li>
 </ol></li>
-<li><p>Ingest API data and parse into data frames.</p></li>
-<li><p>Tidy data frames and prepare for downstream analysis</p></li>
+<li><p>Keyword Detection &amp; Aggregation:</p>
+<ol type="1">
+<li>Construct a case-insensitive regular expression (regex) with strict word boundaries covering AI/LLM terminology. Apply this pattern across book titles/descriptions and article headlines, abstracts, and nested keyword lists (<code>purrr::map_lgl</code>), then summarize daily article frequency, front-page placement, and book longevity.</li>
+</ol></li>
 </ol>
 </section>
 

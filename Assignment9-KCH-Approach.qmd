@@ -15,30 +15,32 @@ theme:
 
 # Introduction and Overview
 
-In this assignment, the New York Times (NYT) Application Programming Interface (API) will be accessed. Data from at least two endpoints will be collected in R. The JSON responses will be parsed into data frames, which will then be tidied and analyzed. One potential avenue of investigation is quantifying the prevalence of "AI", "LLM", and other keywords in the NYT historical records. To accomplish this, the following endpoints will be accessed:
+In this assignment, the New York Times (NYT) Application Programming Interface (API) is accessed in R to collect, tidy, and analyze data from two distinct endpoints. The primary objective of this codebase is to quantify and compare the prevalence of Artificial Intelligence ("AI"), Large Language Models ("LLMs"), and related concepts across NYT news coverage and best-selling books. To accomplish this, while managing payload sizes, the following endpoints and scopes are used:
 
 1.  Books API
 
-    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence of AI-focused books in the NYT lists.
+    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence and longevity of AI-focused books in the NYT lists.
 
 2.  Archive API
 
-    - This API provides data about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
+    - This API provides metadata about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
+
+Key engineering challenges addressed in this workflow include secure credential storage, local caching to minimize redundant API requests, unnesting complex JSON structures, and reconciling text searches across article metadata and book descriptions.
 
 # Approach
 
-1.  Sign up for NYT API credentials
+1.  Credential management:
 
-    1.   <https://developer.nytimes.com/>
+    1.  Register for NYT Developer API credentials at https://developer.nytimes.com/ and store the API key and secret locally in an .Renviron file to prevent exposing secrets in the codebase.
 
-2.  Save access keys and secrets to local `.Renviron` file.
+2.  Endpoint probing
 
-    1.  This avoids leaking secrets and keeps them local
+    1.  Query the Books and Archive APIs using `httr2` test scripts to verify `200 OK` HTTP statuses and inspect the nested structure of the raw JSON payloads.
 
-3.  Probe the API endpoints with test scripts
+3.  Data ingestion
 
-    1.  Confirm connection is successful and shape of queried data matches expectations
+    1.  Parse the JSON payloads into flat tibbles using `jsonlite` and `tidyr::unnest()`, select relevant columns, standardize dates and missing values, and cache the resulting data frames locally as .parquet files using the `arrow` package.
 
-4.  Ingest API data and parse into data frames.
+4.  Keyword Detection & Aggregation:
 
-5.  Tidy data frames and prepare for downstream analysis
+    1.  Construct a case-insensitive regular expression (regex) with strict word boundaries covering AI/LLM terminology. Apply this pattern across book titles/descriptions and article headlines, abstracts, and nested keyword lists (`purrr::map_lgl`), then summarize daily article frequency, front-page placement, and book longevity.

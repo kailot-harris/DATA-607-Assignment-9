@@ -15,37 +15,35 @@ theme:
 
 # Introduction and Overview
 
-In this assignment, the New York Times (NYT) Application Programming Interface (API) will be accessed. Data from at least two endpoints will be collected in R. The JSON responses will be parsed into data frames, which will then be tidied and analyzed. One potential avenue of investigation is quantifying the prevalence of "AI", "LLM", and other keywords in the NYT historical records. To accomplish this, the following endpoints will be accessed:
+In this assignment, the New York Times (NYT) Application Programming Interface (API) is accessed in R to collect, tidy, and analyze data from two distinct endpoints. The primary objective of this codebase is to quantify and compare the prevalence of Artificial Intelligence ("AI"), Large Language Models ("LLMs"), and related concepts across NYT news coverage and best-selling books. To accomplish this, while managing payload sizes, the following endpoints and scopes are used:
 
 1.  Books API
 
-    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence of AI-focused books in the NYT lists.
+    - This API provides data about books on the NYT Best Sellers lists. This can help determine the relevant prevalence and longevity of AI-focused books in the NYT lists.
 
 2.  Archive API
 
-    - This API provides data about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
+    - This API provides metadata about articles for a given month, extending back to 1851. This can be used to develop a deep historical viewpoint on the rise of these keywords in popular media.
 
-Anticipated challenges include safe secret storage, scoping the data pulls to limit file size, and comparing data from books to articles.
+Key engineering challenges addressed in this workflow include secure credential storage, local caching to minimize redundant API requests, unnesting complex JSON structures, and reconciling text searches across article metadata and book descriptions.
 
 # Approach
 
-1.  Sign up for NYT API credentials
+1.  Credential management:
 
-    1.  <https://developer.nytimes.com/>
+    1.  Register for NYT Developer API credentials at https://developer.nytimes.com/ and store the API key and secret locally in an .Renviron file to prevent exposing secrets in the codebase.
 
-2.  Save access keys and secrets to local `.Renviron` file.
+2.  Endpoint probing
 
-    1.  This avoids leaking secrets and keeps them local
+    1.  Query the Books and Archive APIs using `httr2` test scripts to verify `200 OK` HTTP statuses and inspect the nested structure of the raw JSON payloads.
 
-3.  Probe the API endpoints with test scripts
+3.  Data ingestion
 
-    1.  Confirm connection is successful and shape of queried data matches expectations
+    1.  Parse the JSON payloads into flat tibbles using `jsonlite` and `tidyr::unnest()`, select relevant columns, standardize dates and missing values, and cache the resulting data frames locally as .parquet files using the `arrow` package.
 
-4.  Ingest API data and parse into data frames.
+4.  Keyword Detection & Aggregation:
 
-    1.  Optional challenge: store data in parquet files (arrow package)
-
-5.  Tidy data frames and prepare for downstream analysis
+    1.  Construct a case-insensitive regular expression (regex) with strict word boundaries covering AI/LLM terminology. Apply this pattern across book titles/descriptions and article headlines, abstracts, and nested keyword lists (`purrr::map_lgl`), then summarize daily article frequency, front-page placement, and book longevity.
 
 # Codebase
 
@@ -67,6 +65,7 @@ library(arrow)
 #|echo: TRUE
 #|warning: FALSE
 #|message: FALSE
+#|cache: TRUE
 
 if (Sys.getenv("NYT_API_KEY") == "") {
   stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
@@ -111,6 +110,7 @@ knitr::kable(head(books_df[,12:13]))
 #|echo: TRUE
 #|warning: FALSE
 #|message: FALSE
+#|cache: TRUE
 
 if (Sys.getenv("NYT_API_KEY") == "") {
   stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
@@ -155,6 +155,9 @@ Both tests passed (`status = 200` and real data in glimpses), so now data can be
 ### Saving data into parquet files
 
 ```{r parquet-books}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
 
 parquet_path <- "nyt_books.parquet"
 
@@ -198,6 +201,9 @@ if(!file.exists(parquet_path)){
 ```
 
 ```{r parquet-archive-jan-26}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
 
 parquet_path <- "nyt_archive_2026_01.parquet"
 
@@ -242,15 +248,122 @@ if(!file.exists(parquet_path)){
 }
 ```
 
+### Summary of API Requests and Data-Cleaning Decisions
+
+Books API (`GET https://api.nytimes.com/svc/books/v3/lists/full-overview.json`):
+
+- Queried with the `api-key` parameter (retrieved securely via `Sys.getenv("NYT_API_KEY")`) to retrieve all current NYT Best Seller lists and their ranked titles in a single payload.
+
+Archive API (`GET https://api.nytimes.com/svc/archive/v1/2026/1.json`):
+
+- Queried with path parameters `year = 2026` and `month = 1` along with the `api-key` query parameter to retrieve metadata for all NYT articles published in January 2026.
+
 ## Data Analysis
 
 Although this assignment does not call for analysis and findings, these two API endpoints can be used to answer a specific research question:
 
 *How does the surge in daily/monthly AI news coverage in the NYT Archive compare to the appearance and longevity (`weeks_on_list`) of AI/tech books on the NYT Best Sellers lists?*
 
-```{r}
+To address this question, a regex pattern is constructed that includes an assortment of keywords related to Artificial Intelligence and Large Language Models.
+
+```{r regex-pattern}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+
+# Regex pattern with strict word boundaries for AI / LLM concepts
+ai_pattern <- regex(
+  "\\b(AI|A\\.I\\.|Artificial Intelligence|LLM|LLMs|Large Language Model|ChatGPT|OpenAI|Generative AI|Neural Network|DeepMind|Anthropic|Machine Learning|Deep Learning|genAI|DeepSeek|Chatbot|Chatbots)\\b",
+  ignore_case = TRUE
+)
 
 ```
+
+The data frame holding data from the `archive` endpoint is transformed to add `str_detect()` columns for both the article headline and abstract against the regex pattern from above. The `coalesce()` function from the `dplyr` package is used to find the first non-missing entry in each record.
+
+```{r archive-ai}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+archive_ai <- archive_df |> 
+  mutate(
+    text_match = str_detect(coalesce(headline, ""), 
+                            ai_pattern) |
+      str_detect(coalesce(abstract, ""), 
+                 ai_pattern),
+    
+    keyword_match = map_lgl(keywords, 
+                            \(df)
+                            any(str_detect(df[["value"]],
+                                           ai_pattern),
+                             na.rm = TRUE)),
+  
+    is_ai_article = text_match | keyword_match
+    ) |> 
+  select(is_ai_article, print_section, print_page, pub_date) |> 
+  group_by(pub_date)
+```
+
+Now this data frame will be summarized below:
+
+```{r archive-summary}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+archive_ai_summary <- archive_ai |> 
+  summarize(
+    total_articles = n(),
+    ai_articles = sum(is_ai_article, na.rm = TRUE),
+    ai_pct = round((ai_articles / total_articles)*100,1),
+    front_page_ai = sum(is_ai_article & print_section == "A" & print_page == "1", na.rm = TRUE)
+  )
+
+nrow(archive_ai_summary)
+
+knitr::kable(archive_ai_summary)
+```
+
+A similar procedure is followed to prepare the data frame storing data from the `books` endpoint: new columns are added that match the records against the regex term.
+
+```{r books-ai}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+books_ai <- books_df |>
+  mutate(
+    is_ai_book = str_detect(
+      coalesce(title, ""),
+      ai_pattern) |
+      str_detect(
+        coalesce(description, ""),
+        ai_pattern)
+      ) |> 
+  select(is_ai_book, weeks_on_list)
+```
+
+This data frame is also summarized below:
+
+```{r books-summary}
+#|echo: TRUE
+#|warning: FALSE
+#|message: FALSE
+
+books_ai_summary <- books_ai |> 
+  summarize(
+    total_books = n(),
+    ai_books = sum(is_ai_book, na.rm = TRUE),
+    ai_pct = round((ai_books / total_books)*100,1),
+    avg_weeks_ai = round(mean(weeks_on_list[is_ai_book], na.rm = TRUE), 1)
+  )
+
+knitr::kable(books_ai_summary)
+```
+
+## Visualization
 
 # Conclusions and Recommendations
 
