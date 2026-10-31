@@ -61,11 +61,13 @@ library(arrow)
 
 ```
 
+The yaml header option `cache` is set to true:
+
 ```{r test-books}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
-#|cache: TRUE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
+#| cache: TRUE
 
 if (Sys.getenv("NYT_API_KEY") == "") {
   stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
@@ -107,10 +109,10 @@ knitr::kable(head(books_df[,12:13]))
 ```
 
 ```{r test-archive}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
-#|cache: TRUE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
+#| cache: TRUE
 
 if (Sys.getenv("NYT_API_KEY") == "") {
   stop("NYT_API_KEY not found in environment. Please set in .Renviron file.")
@@ -155,9 +157,9 @@ Both tests passed (`status = 200` and real data in glimpses), so now data can be
 ### Saving data into parquet files
 
 ```{r parquet-books}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 parquet_path <- "nyt_books.parquet"
 
@@ -201,9 +203,9 @@ if(!file.exists(parquet_path)){
 ```
 
 ```{r parquet-archive-jan-26}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 parquet_path <- "nyt_archive_2026_01.parquet"
 
@@ -267,9 +269,9 @@ Although this assignment does not call for analysis and findings, these two API 
 To address this question, a regex pattern is constructed that includes an assortment of keywords related to Artificial Intelligence and Large Language Models.
 
 ```{r regex-pattern}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 
 # Regex pattern with strict word boundaries for AI / LLM concepts
@@ -283,9 +285,9 @@ ai_pattern <- regex(
 The data frame holding data from the `archive` endpoint is transformed to add `str_detect()` columns for both the article headline and abstract against the regex pattern from above. The `coalesce()` function from the `dplyr` package is used to find the first non-missing entry in each record.
 
 ```{r archive-ai}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 archive_ai <- archive_df |> 
   mutate(
@@ -309,9 +311,9 @@ archive_ai <- archive_df |>
 Now this data frame will be summarized below:
 
 ```{r archive-summary}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 archive_ai_summary <- archive_ai |> 
   summarize(
@@ -327,9 +329,9 @@ knitr::kable(archive_ai_summary)
 A similar procedure is followed to prepare the data frame storing data from the `books` endpoint: new columns are added that match the records against the regex term.
 
 ```{r books-ai}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 books_ai <- books_df |>
   mutate(
@@ -346,9 +348,9 @@ books_ai <- books_df |>
 This data frame is also summarized below:
 
 ```{r books-summary}
-#|echo: TRUE
-#|warning: FALSE
-#|message: FALSE
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
 
 books_ai_summary <- books_ai |> 
   summarize(
@@ -371,8 +373,8 @@ knitr::kable(books_ai_summary)
 theme_standard <- function(){
   theme_minimal() +
     theme(
-      plot.title.position = "plot",
-      plot.caption.position = "plot",
+      plot.title.position = "panel",
+      plot.caption.position = "panel",
       plot.title = element_text(size = 15, face = "bold"),
       plot.subtitle = element_text(size = 13, face = "italic"),
       axis.text.y = element_text(size = 11, face = "bold"),
@@ -399,18 +401,62 @@ archive_ai_summary |> ggplot(
     y = "Share of Daily Articles (%)",
     caption = "Source: NYT Archive API (2026/1.json)"
   ) +
-  theme_standard() +
-  theme(
-    plot.title.position = "panel",
-    plot.caption.position = "panel"
-  )
+  theme_standard()
   
 
 ```
 
 ```{r}
+#| label: fig-endpoint-comparison
+#| echo: TRUE
+#| message: FALSE
+#| warning: FALSE
 
+endpoint_comparison <- tibble(
+  endpoint = c("Archive Articles", "Best Sellers Lists"),
+  total_records = c(sum(archive_ai_summary$total_articles), books_ai_summary$total_books),
+  ai_matches    = c(sum(archive_ai_summary$ai_articles), books_ai_summary$ai_books),
+  ai_pct        = round((ai_matches / total_records) * 100, 2)
+)
 
+endpoint_comparison |>  ggplot(
+  aes(x=endpoint, y = ai_pct, fill = endpoint)) + 
+  geom_col(show.legend = FALSE) + 
+  labs(
+    title = "Daily News vs. Best-Selling Books",
+    subtitle = "~6x more AI in news articles than book lists",
+    x = NULL,
+    y = "Percent of Total Records (%)",
+    caption = "Source: NYT Archive API & NYT Books API"
+  ) +
+  theme_standard()
+```
+
+```{r}
+#| label: fig-ai-sections
+#| echo: TRUE
+#| message: FALSE
+#| warning: FALSE
+
+archive_plot <- archive_df |> 
+  mutate(is_ai = str_detect(coalesce(headline, ""), ai_pattern) |
+           str_detect(coalesce(abstract, ""), ai_pattern) |
+           map_lgl(keywords, \(df) any(str_detect(df[["value"]], ai_pattern), na.rm = TRUE))
+  ) |> 
+  filter(is_ai, !is.na(section_name)) |> 
+  count(section_name, sort=TRUE)
+
+archive_plot |> 
+  ggplot(aes(x=n, y=reorder(section_name, n))) + 
+  geom_col(show.legend = FALSE) +
+  labs(
+    title = "NYT Sections and AI Articles",
+    subtitle = "(Jan 1–7, 2026)",
+    x = "Number of AI Articles",
+    y = "",
+    caption = "Source: NYT Archive API"
+  ) +
+  theme_standard()
 ```
 
 # Conclusions and Recommendations
