@@ -273,7 +273,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="approach" class="level1">
 <h1>Approach</h1>
 <ol type="1">
-<li><p>Credential management:</p>
+<li><p>Credential management</p>
 <ol type="1">
 <li>Register for NYT Developer API credentials at https://developer.nytimes.com/ and store the API key and secret locally in an .Renviron file to prevent exposing secrets in the codebase.</li>
 </ol></li>
@@ -285,7 +285,7 @@ ul.task-list li input[type="checkbox"] {
 <ol type="1">
 <li>Parse the JSON payloads into flat tibbles using <code>jsonlite</code> and <code>tidyr::unnest()</code>, select relevant columns, standardize dates and missing values, and cache the resulting data frames locally as .parquet files using the <code>arrow</code> package.</li>
 </ol></li>
-<li><p>Keyword Detection &amp; Aggregation:</p>
+<li><p>Keyword detection &amp; aggregation</p>
 <ol type="1">
 <li>Construct a case-insensitive regular expression (regex) with strict word boundaries covering AI/LLM terminology. Apply this pattern across book titles/descriptions and article headlines, abstracts, and nested keyword lists (<code>purrr::map_lgl</code>), then summarize daily article frequency, front-page placement, and book longevity.</li>
 </ol></li>

@@ -29,7 +29,7 @@ Key engineering challenges addressed in this workflow include secure credential 
 
 # Approach
 
-1.  Credential management:
+1.  Credential management
 
     1.  Register for NYT Developer API credentials at https://developer.nytimes.com/ and store the API key and secret locally in an .Renviron file to prevent exposing secrets in the codebase.
 
@@ -41,7 +41,7 @@ Key engineering challenges addressed in this workflow include secure credential 
 
     1.  Parse the JSON payloads into flat tibbles using `jsonlite` and `tidyr::unnest()`, select relevant columns, standardize dates and missing values, and cache the resulting data frames locally as .parquet files using the `arrow` package.
 
-4.  Keyword Detection & Aggregation:
+4.  Keyword detection & aggregation
 
     1.  Construct a case-insensitive regular expression (regex) with strict word boundaries covering AI/LLM terminology. Apply this pattern across book titles/descriptions and article headlines, abstracts, and nested keyword lists (`purrr::map_lgl`), then summarize daily article frequency, front-page placement, and book longevity.
 
