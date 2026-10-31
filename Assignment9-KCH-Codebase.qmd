@@ -321,8 +321,6 @@ archive_ai_summary <- archive_ai |>
     front_page_ai = sum(is_ai_article & print_section == "A" & print_page == "1", na.rm = TRUE)
   )
 
-nrow(archive_ai_summary)
-
 knitr::kable(archive_ai_summary)
 ```
 
@@ -364,6 +362,56 @@ knitr::kable(books_ai_summary)
 ```
 
 ## Visualization
+
+```{r}
+#| echo: FALSE
+#| warning: FALSE
+#| message: FALSE
+
+theme_standard <- function(){
+  theme_minimal() +
+    theme(
+      plot.title.position = "plot",
+      plot.caption.position = "plot",
+      plot.title = element_text(size = 15, face = "bold"),
+      plot.subtitle = element_text(size = 13, face = "italic"),
+      axis.text.y = element_text(size = 11, face = "bold"),
+      axis.text.x = element_text(size = 11, face = "bold"),
+      axis.title.y = element_text(size = 12, face = "bold"),
+      axis.title.x = element_text(size = 12, face = "bold")
+    )
+}
+```
+
+```{r}
+#| label: fig-daily-ai
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE
+
+archive_ai_summary |> ggplot(
+  aes(x = pub_date, y=ai_pct)) +
+  geom_col() +
+  labs(
+    title = "NYT Articles Mentioning AI / LLMs",
+    subtitle = "(Jan 1–7, 2026)",
+    x = "Publication Date",
+    y = "Share of Daily Articles (%)",
+    caption = "Source: NYT Archive API (2026/1.json)"
+  ) +
+  theme_standard() +
+  theme(
+    plot.title.position = "panel",
+    plot.caption.position = "panel"
+  )
+  
+
+```
+
+```{r}
+
+
+```
 
 # Conclusions and Recommendations
 
