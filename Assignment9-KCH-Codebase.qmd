@@ -50,9 +50,9 @@ Key engineering challenges addressed in this workflow include secure credential 
 ## API Access Testing
 
 ```{r load-packages}
-#|echo: FALSE
-#|warning: FALSE
-#|message: FALSE
+#| echo: FALSE
+#| warning: FALSE
+#| message: FALSE
 
 library(tidyverse)
 library(httr2)
@@ -61,7 +61,7 @@ library(arrow)
 
 ```
 
-The yaml header option `cache` is set to true:
+Prior to loading data in the R document, connections to each API are tested. API keys are stored in a local `.Renviron` file. Each request is structured with a NYT API URL and the keys. Each response is validated against the `200 OK` exit code, and summary information printed. The chunk option `cache: TRUE` is enabled so that Quarto saves the results of these initial test requests locally. This avoids making redundant API calls on subsequent document renders, which respects API rate limits and accelerates compile time.
 
 ```{r test-books}
 #| echo: TRUE
@@ -91,7 +91,9 @@ raw_json <- resp |>                 # Parse JSON data into raw frame
   resp_body_string() |> 
   fromJSON(flatten = TRUE)
 
+# Print raw json column names
 names(raw_json)
+
 # Print status code
 raw_json$status 
 
@@ -101,8 +103,10 @@ raw_json$num_results
 books_df <- as_tibble(raw_json$results$lists) |>
   unnest(books)
 
+# Print names of columns in books df
 names(books_df)
 
+#sample
 knitr::kable(head(books_df[,12:13]))
 
 
@@ -146,15 +150,24 @@ raw_json2$response$meta$hits
 
 archive_df <- as_tibble(raw_json2$response$docs)
   
+#sample archive frame
 knitr::kable(head(archive_df[,1:3],3))
 
 ```
 
-Both tests passed (`status = 200` and real data in glimpses), so now data can be ingested and tidied to prepare for analysis.
+Both tests passed (`status = 200` and real data appears in glimpses), so now data can be ingested and tidied to prepare for analysis.
 
 ## Ingesting API data
 
 ### Saving data into parquet files
+
+To practice utilizing the Apache parquet format from the `arrow` package, data will be ingested and saved directly into this `.parquet` format before being read back into the workflow. Parquet files offer a few key benefits over other flat formats like .CSV:
+
+- Column compression significantly reduces file size and accelerates read times
+
+- Preserves R data types (such as `Date` columns) and complex nested lists (like the `keywords` list-column in the Archive data), which are not possible with .CSV files.
+
+For each set of data, a new API request is sent if the parquet file does not pre-exist. In this case, the raw JSON from the response is transformed into a new data frame before saving locally. Here, the nested field `books` is unnested using the `unnest()` function from `tidyr` package.
 
 ```{r parquet-books}
 #| echo: TRUE
@@ -200,6 +213,8 @@ if(!file.exists(parquet_path)){
 } else {
   books_df <-read_parquet(parquet_path)
 }
+
+knitr::kable(head(books_df, 3))
 ```
 
 ```{r parquet-archive-jan-26}
@@ -248,9 +263,11 @@ if(!file.exists(parquet_path)){
 } else {
   archive_df <-read_parquet(parquet_path)
 }
+
+knitr::kable(head(archive_df |> select(-keywords), 3))
 ```
 
-### Summary of API Requests and Data-Cleaning Decisions
+### Summary of API Requests
 
 Books API (`GET https://api.nytimes.com/svc/books/v3/lists/full-overview.json`):
 
@@ -260,13 +277,21 @@ Archive API (`GET https://api.nytimes.com/svc/archive/v1/2026/1.json`):
 
 - Queried with path parameters `year = 2026` and `month = 1` along with the `api-key` query parameter to retrieve metadata for all NYT articles published in January 2026.
 
+### Summary of Data Cleaning Decisions
+
+- `jsonlite::fromJSON(flatten = TRUE)` was used to flatten nested fields (e.g. `headline.main`) and `tidyr::unnest()` was applied to `books` to expand the nested 19 best-seller lists into a single 240-row tibble.
+
+- Each article in the Archive set contains a nested `keywords` data frame. Rather than unnesting this frame, the `purrr::map_lgl()` function was applied to query inside the nested `value` column while maintaining one row per article.
+
+- Both APIs return empty strings (`""`) rather than `null` or `NA` for missing attributes. These were standardized to `NA` using the `dplyr::na_if()` function. `dplyr::coalesce()` was also applied during regex matching to prevent propagating `NA` downstream.
+
 ## Data Analysis
 
 Although this assignment does not call for analysis and findings, these two API endpoints can be used to answer a specific research question:
 
 *How does the surge in daily/monthly AI news coverage in the NYT Archive compare to the appearance and longevity (`weeks_on_list`) of AI/tech books on the NYT Best Sellers lists?*
 
-To address this question, a regex pattern is constructed that includes an assortment of keywords related to Artificial Intelligence and Large Language Models.
+To address this question, a regular expression (regex) pattern is constructed that includes an assortment of keywords related to Artificial Intelligence and Large Language Models.
 
 ```{r regex-pattern}
 #| echo: TRUE
@@ -308,9 +333,11 @@ archive_ai <- archive_df |>
   group_by(pub_date)
 ```
 
-Now this data frame will be summarized below:
+Now this data frame will be summarized in @tbl-archive-summary:
 
-```{r archive-summary}
+```{r}
+#| label: tbl-archive-summary
+#| tbl-cap: "Daily Summary of NYT Archive Articles and AI Keyword Matches (Jan 1–7, 2026)"
 #| echo: TRUE
 #| warning: FALSE
 #| message: FALSE
@@ -345,9 +372,11 @@ books_ai <- books_df |>
   select(is_ai_book, weeks_on_list)
 ```
 
-This data frame is also summarized below:
+This data frame is also summarized in @tbl-books-summary:
 
-```{r books-summary}
+```{r}
+#| label: tbl-books-summary
+#| tbl-cap: "Summary of NYT Best Sellers Lists and AI Book Prevalence"
 #| echo: TRUE
 #| warning: FALSE
 #| message: FALSE
@@ -385,8 +414,11 @@ theme_standard <- function(){
 }
 ```
 
+The daily proportion of NYT articles mentioning AI-related keywords during the first 7 days of January 2026 is shown in @fig-daily-ai. A local maximum is observed on January 2, 2026, where almost 8% of all articles referenced AI topics (8 of 101). Other days saw proportions around 2%.
+
 ```{r}
 #| label: fig-daily-ai
+#| fig-cap: "Daily Share of NYT Articles Mentioning AI/LLM Keywords (Jan 1–7, 2026)"
 #| echo: TRUE
 #| warning: FALSE
 #| message: FALSE
@@ -406,8 +438,11 @@ archive_ai_summary |> ggplot(
 
 ```
 
+Comparing keyword prevalence between API endpoints ( @fig-endpoint-comparison) highlights a contrast between the frequency of AI-mentions in daily articles vs book publishing. Across the 694 news articles between January 1 and January 7 2026, 2.45% (17 articles) featured AI-coverage, whereas only 0.42% (1 of 240 titles) appeared on the best-seller list. This represents a striking 6x difference in coverage frequency between the two mediums.
+
 ```{r}
 #| label: fig-endpoint-comparison
+#| fig-cap: "Comparison of AI Keyword Prevalence Across NYT Archive and Books APIs"
 #| echo: TRUE
 #| message: FALSE
 #| warning: FALSE
@@ -432,8 +467,11 @@ endpoint_comparison |>  ggplot(
   theme_standard()
 ```
 
+The 17 AI-related articles in the NYT newspaper section can be dis-aggregated by section (@fig-ai-sections), demonstrating that coverage is not confined solely to the Technology desk, but extends to Business, World, Opinion, and Arts sections.
+
 ```{r}
 #| label: fig-ai-sections
+#| fig-cap: "Distribution of AI-Related NYT Articles by Newspaper Section"
 #| echo: TRUE
 #| message: FALSE
 #| warning: FALSE
@@ -461,4 +499,12 @@ archive_plot |>
 
 # Conclusions and Recommendations
 
+In summary, comparing data from NYT API endpoints indicates that AI topics have a higher footprint in daily journalism (2.45% of articles in January 1 - January 7 2026) than on the Best-Seller list (0.42% of books). This disparity reflects structural lag between the rapid publication cycle of daily reporting and the longer cycle of best-selling books.
+
 An extension of this work could include building a deeper data set via a functional pipeline approach. Automating the data fetching process from the API would allow for analyzing trends from a longer historical timeframe. A 5-year archive (2021-10-01 through 2026-10-01) could be assembled by applying the function to a series of month-year combinations.
+
+## AI Disclosure and Citation
+
+Google Gemini was consulted for assistance in structuring the `purrr::map_lgl()` function to query nested `keywords` data frames and refining the regular expression word-boundary pattern.
+
+Google. (2026). *Gemini 4.0 Argon* \[Large language model\]. <https://aistudio.google.com/>. Accessed October 26, 2026.
